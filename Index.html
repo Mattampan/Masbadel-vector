@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MasBadel Vectorizer - Raster to SVG Converter & History Dashboard</title>
+  <meta name="description" content="Aplikasi tracing gambar bitmap (PNG/JPG) ke kurva vektor SVG tajam dan jernih bebas pecah, dilengkapi AI Smart Background Remover dan Dashboard Riwayat.">
+  <link rel="canonical" href="https://masbadel-vector.vercel.app">
+
+  <!-- Open Graph / Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://masbadel-vector.vercel.app/">
+  <meta property="og:title" content="MasBadel Vectorizer - Image to Clean SVG">
+  <meta property="og:description" content="Konversi gambar raster ke vektor SVG instan tanpa pecah, hapus background otomatis & dashboard riwayat.">
+  <meta name="theme-color" content="#0284c7">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#075985',
+              accent: '#38bdf8'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Canvas-to-SVG Vectorization Engine (ImageTracerJS) -->
+  <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
+
+  <style>
+    /* Transparency Checkerboard */
+    .bg-checker {
+      background-image: 
+        linear-gradient(45deg, #1e293b 25%, transparent 25%),
+        linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1e293b 75%),
+        linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      background-color: #0f172a;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .pixelated {
+      image-rendering: pixelated;
+    }
+    /* Touch Action for Mobile Canvas Pan/Zoom */
+    #stageContainer {
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
+
+  <!-- Main Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-50 px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between shadow-md">
+    <div class="flex items-center gap-3 sm:gap-6">
+      <!-- Logo Branding -->
+      <a href="#studio" class="flex items-center gap-2 group cursor-pointer" onclick="navigatePage('studio')">
+        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-sky-500/25 text-white font-black shrink-0">
+          <i data-lucide="vector-square" class="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-sm sm:text-base tracking-tight bg-gradient-to-r from-white via-sky-100 to-sky-400 bg-clip-text text-transparent">MasBadel Vector</span>
+            <span class="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30">PRO</span>
+          </div>
+          <p class="text-[10px] text-slate-400 hidden md:block">masbadel-vector.vercel.app</p>
+        </div>
+      </a>
+
+      <!-- Page Tabs Desktop -->
+      <nav class="hidden md:flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+        <button id="navStudioBtn" onclick="navigatePage('studio')" class="nav-item px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 text-white transition flex items-center gap-2 shadow-sm">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>Studio Vector</span>
+        </button>
+        <button id="navHistoryBtn" onclick="navigatePage('history')" class="nav-item px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="history" class="w-3.5 h-3.5"></i>
+          <span>Riwayat (<span id="historyCountBadge">0</span>)</span>
+        </button>
+        <button id="navDocsBtn" onclick="navigatePage('docs')" class="nav-item px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+          <span>Panduan Vercel</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="flex items-center gap-1.5 sm:gap-2.5">
+      <!-- Quick Sample Logo -->
+      <button id="btnOpenSample" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition flex items-center gap-1.5 border border-slate-700 shadow-sm" title="Muat Contoh Logo">
+        <i data-lucide="palette" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span class="hidden sm:inline">Contoh</span>
+      </button>
+
+      <!-- Main Upload Button -->
+      <button id="btnHeaderUpload" type="button" class="cursor-pointer text-xs px-3 sm:px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-lg shadow-sky-600/30 transition flex items-center gap-1.5 border border-sky-400/40">
+        <i data-lucide="upload" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+        <span class="hidden xs:inline">Unggah</span>
+        <span class="xs:hidden">Foto</span>
+      </button>
+      <input type="file" id="fileUploadInput" accept="image/png, image/jpeg, image/webp" class="hidden">
+
+      <!-- Download Button -->
+      <button id="btnDownloadSvg" disabled class="disabled:opacity-40 disabled:cursor-not-allowed text-xs px-3 sm:px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition flex items-center gap-1.5 shadow-md shadow-emerald-700/20">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>SVG</span>
+      </button>
+
+      <!-- Mobile Navigation Hamburger Trigger -->
+      <button id="mobileNavMenuBtn" class="md:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 active:scale-95 transition">
+        <i data-lucide="menu" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer Menu -->
+  <div id="mobileDrawer" class="hidden md:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 space-y-2 text-xs">
+    <button onclick="navigatePage('studio'); toggleMobileMenu()" class="w-full text-left py-2.5 px-3 rounded-lg bg-slate-800 font-medium text-sky-400 flex items-center justify-between">
+      <span class="flex items-center gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i> Studio Vectorizer</span>
+      <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
+    </button>
+    <button onclick="navigatePage('history'); toggleMobileMenu()" class="w-full text-left py-2.5 px-3 rounded-lg bg-slate-800/60 font-medium text-slate-300 flex items-center justify-between">
+      <span class="flex items-center gap-2"><i data-lucide="history" class="w-4 h-4"></i> Dashboard Riwayat</span>
+      <span id="mobileHistoryCountBadge" class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-400 text-[10px] font-bold">0</span>
+    </button>
+    <button onclick="navigatePage('docs'); toggleMobileMenu()" class="w-full text-left py-2.5 px-3 rounded-lg bg-slate-800/60 font-medium text-slate-300 flex items-center justify-between">
+      <span class="flex items-center gap-2"><i data-lucide="book-open" class="w-4 h-4"></i> Panduan & Setup GitHub / Vercel</span>
+      <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
+    </button>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- PAGE 1: VECTORIZER STUDIO -->
+  <!-- ======================================================== -->
+  <div id="pageStudio" class="page-view flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+    <!-- Viewport Panel (Left/Center) -->
+    <div class="flex-1 flex flex-col relative min-h-[46vh] sm:min-h-[55vh] lg:min-h-0 overflow-hidden bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-800">
+      
+      <!-- Top Viewport Control Bar -->
+      <div class="h-10 border-b border-slate-800 px-2 sm:px-4 flex items-center justify-between bg-slate-950/70 z-20 text-xs shrink-0">
+        <div class="flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-1">
+          <!-- View Modes -->
+          <div class="flex items-center bg-slate-800/90 rounded-lg p-0.5 border border-slate-700 shrink-0">
+            <button id="modeSplit" class="px-2 sm:px-2.5 py-1 rounded text-[11px] sm:text-xs font-semibold bg-sky-600 text-white transition flex items-center gap-1 shadow-sm">
+              <i data-lucide="columns-2" class="w-3 h-3"></i> 
+              <span class="hidden xs:inline">Split</span>
+            </button>
+            <button id="modeSideBySide" class="px-2 sm:px-2.5 py-1 rounded text-[11px] sm:text-xs font-medium text-slate-300 hover:text-white transition flex items-center gap-1">
+              <i data-lucide="grid-2x2" class="w-3 h-3"></i> 
+              <span class="hidden xs:inline">Side</span>
+            </button>
+            <button id="modeVectorOnly" class="px-2 sm:px-2.5 py-1 rounded text-[11px] sm:text-xs font-medium text-slate-300 hover:text-white transition flex items-center gap-1">
+              <i data-lucide="bezier" class="w-3 h-3"></i> 
+              <span>Vektor</span>
+            </button>
+          </div>
+
+          <div class="h-4 w-px bg-slate-800 hidden sm:block"></div>
+
+          <!-- Wireframe toggle -->
+          <button id="toggleWireframe" class="hidden sm:flex px-2 py-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 items-center gap-1 text-[11px] shrink-0">
+            <i data-lucide="network" class="w-3 h-3 text-sky-400"></i>
+            <span>Wireframe</span>
+          </button>
+        </div>
+
+        <!-- Zoom / Reset Controls -->
+        <div class="flex items-center gap-1 shrink-0 ml-1">
+          <button id="zoomOutBtn" class="p-1 sm:p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 active:bg-slate-600" title="Perkecil">
+            <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+          </button>
+          <span id="zoomLevelDisplay" class="font-mono text-[10px] sm:text-[11px] w-10 sm:w-12 text-center text-slate-300">100%</span>
+          <button id="zoomInBtn" class="p-1 sm:p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 active:bg-slate-600" title="Perbesar">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="zoomResetBtn" class="p-1 sm:p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 active:bg-slate-600" title="Reset Tampilan">
+            <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Canvas Stage Container -->
+      <div id="stageContainer" class="flex-1 w-full h-full relative overflow-hidden bg-checker cursor-grab active:cursor-grabbing flex items-center justify-center select-none">
+
+        <!-- Initial Placeholder Dropzone -->
+        <div id="dropzonePrompt" class="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-30 pointer-events-auto bg-slate-900/90 backdrop-blur-sm transition-opacity duration-300">
+          <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-sky-500/10 border-2 border-dashed border-sky-500/40 flex items-center justify-center text-sky-400 mb-3 sm:mb-4 animate-pulse">
+            <i data-lucide="image-up" class="w-8 h-8 sm:w-10 sm:h-10"></i>
+          </div>
+          <h3 class="text-sm sm:text-base font-bold text-white mb-1">Pilih Gambar atau Seret ke Sini</h3>
+          <p class="text-[11px] sm:text-xs text-slate-400 max-w-xs sm:max-w-sm mb-4">PNG, JPG, atau WebP. Otomatis hapus latar belakang dan trace ke SVG berkualitas tinggi.</p>
+          <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto px-4 sm:px-0">
+            <button id="btnBrowseComputer" class="w-full sm:w-auto px-4 py-2.5 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white rounded-lg text-xs font-semibold shadow-lg shadow-sky-600/30 flex items-center justify-center gap-1.5">
+              <i data-lucide="folder-open" class="w-3.5 h-3.5"></i> Pilih Gambar
+            </button>
+            <button id="btnLoadDemo" class="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i> Coba Demo
+            </button>
+          </div>
+        </div>
+
+        <!-- Processing Indicator Overlay -->
+        <div id="traceSpinner" class="hidden absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p class="text-xs sm:text-sm font-bold text-white tracking-wide" id="traceStatusText">Sedang Memproses...</p>
+          <span class="text-[10px] sm:text-xs text-slate-400 mt-1" id="traceSubText">Mengonversi raster pixel ke kurva Bezier SVG</span>
+        </div>
+
+        <!-- Transform Plane for Pan & Zoom -->
+        <div id="zoomViewport" class="absolute origin-center transition-transform duration-75 select-none pointer-events-none" style="transform: translate(0px, 0px) scale(1);">
+          
+          <!-- Comparison Box -->
+          <div id="comparisonBox" class="relative overflow-hidden shadow-2xl rounded border border-slate-700/80 pointer-events-auto" style="width: 380px; height: 380px;">
+
+            <!-- Raster Image (Underneath) -->
+            <img id="rasterOriginalImg" src="" alt="Raster Asli" class="absolute inset-0 w-full h-full object-contain pointer-events-none pixelated">
+
+            <!-- Vector Container (Overlay with clip-path) -->
+            <div id="vectorClipContainer" class="absolute inset-0 w-full h-full pointer-events-none overflow-hidden" style="clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);">
+              <div id="svgMountPoint" class="w-full h-full flex items-center justify-center">
+                <!-- SVG Vector Injected here -->
+              </div>
+            </div>
+
+            <!-- Split Divider Line -->
+            <div id="swipeDivider" class="absolute top-0 bottom-0 w-1 bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.9)] cursor-ew-resize z-20 flex items-center justify-center pointer-events-auto" style="left: 50%;">
+              <div class="w-8 h-8 -ml-4 bg-slate-900 border-2 border-sky-400 rounded-full flex items-center justify-center text-sky-400 shadow-md touch-manipulation">
+                <i data-lucide="chevrons-left-right" class="w-4 h-4"></i>
+              </div>
+            </div>
+
+            <!-- Labels -->
+            <div id="badgeOriginal" class="absolute bottom-2 left-2 px-1.5 sm:px-2 py-0.5 rounded bg-black/80 text-[9px] sm:text-[10px] font-bold text-amber-300 border border-amber-500/30 backdrop-blur z-20 pointer-events-none">
+              RASTER (PIXEL)
+            </div>
+            <div id="badgeVector" class="absolute bottom-2 right-2 px-1.5 sm:px-2 py-0.5 rounded bg-sky-950/85 text-[9px] sm:text-[10px] font-bold text-sky-300 border border-sky-500/30 backdrop-blur z-20 pointer-events-none">
+              VECTOR (SVG)
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Bottom Canvas Footer Stats -->
+      <div class="h-8 bg-slate-950 border-t border-slate-800 px-3 sm:px-4 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 shrink-0">
+        <div class="flex items-center gap-2 sm:gap-3 truncate">
+          <span id="canvasDimInfo" class="truncate">-</span>
+          <span class="text-slate-700">|</span>
+          <span id="pathCountInfo">0 Path</span>
+          <span class="text-slate-700 hidden sm:inline">|</span>
+          <span id="colorsCountInfo" class="hidden sm:inline">0 Warna</span>
+        </div>
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+          <span id="fileSizeInfo" class="font-mono text-sky-400">0 KB</span>
+          <button id="btnCopySvgCode" class="text-sky-400 hover:text-sky-300 active:text-sky-200 flex items-center gap-1 p-1">
+            <i data-lucide="copy" class="w-3 h-3"></i> <span class="hidden xs:inline">Salin</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Tuning Sidebar / Mobile Bottom Panel -->
+    <div class="w-full lg:w-88 xl:w-96 bg-slate-900 flex flex-col h-auto lg:h-full border-t lg:border-t-0 border-slate-800 max-h-[50vh] lg:max-h-none overflow-hidden">
+      
+      <!-- Panel Tabs -->
+      <div class="flex border-b border-slate-800 text-xs font-semibold text-slate-400 shrink-0">
+        <button id="tabSettingsBtn" class="flex-1 py-2.5 sm:py-3 px-2 sm:px-3 border-b-2 border-sky-500 text-white bg-slate-800/40 flex items-center justify-center gap-1.5">
+          <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Tracing & BG
+        </button>
+        <button id="tabPaletteBtn" class="flex-1 py-2.5 sm:py-3 px-2 sm:px-3 border-b-2 border-transparent hover:text-slate-200 flex items-center justify-center gap-1.5">
+          <i data-lucide="palette" class="w-3.5 h-3.5"></i> Palet
+        </button>
+        <button id="tabExportBtn" class="flex-1 py-2.5 sm:py-3 px-2 sm:px-3 border-b-2 border-transparent hover:text-slate-200 flex items-center justify-center gap-1.5">
+          <i data-lucide="code-2" class="w-3.5 h-3.5"></i> Ekspor
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="flex-1 overflow-y-auto custom-scroll p-3 sm:p-4 space-y-3.5">
+        
+        <!-- Tab 1: Tracing & Background Removal Configuration -->
+        <div id="tabSettingsContent" class="space-y-3.5">
+
+          <!-- Card: Quick Upload Box -->
+          <div class="p-3 rounded-xl bg-slate-800/80 border border-sky-500/30">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                <i data-lucide="image-plus" class="w-4 h-4"></i> Sumber Gambar
+              </span>
+              <span class="text-[10px] text-slate-400">PNG / JPG / WebP</span>
+            </div>
+            
+            <div id="sidebarDropzone" class="border-2 border-dashed border-slate-600 hover:border-sky-400 bg-slate-900/60 rounded-lg p-2.5 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1 active:bg-slate-900">
+              <i data-lucide="upload-cloud" class="w-5 h-5 text-sky-400"></i>
+              <p class="text-xs font-medium text-slate-200">Ganti atau Pilih Gambar</p>
+              <p class="text-[10px] text-slate-400">Klik di sini untuk upload berkas baru</p>
+            </div>
+          </div>
+
+          <!-- Feature: Background Remover Section -->
+          <div class="p-3.5 rounded-xl bg-gradient-to-br from-indigo-950/40 via-slate-800/80 to-slate-800/80 border border-indigo-500/30">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-bold text-indigo-300 flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="checkRemoveBg" checked class="w-4 h-4 rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0 accent-indigo-500 cursor-pointer">
+                <span>Hapus Background Otomatis</span>
+              </label>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold uppercase">AI Smart</span>
+            </div>
+            <p class="text-[10px] text-slate-400 mb-3">Membersihkan warna latar belakang putih / solid menjadi transparan bersih.</p>
+
+            <!-- BG Removal Settings -->
+            <div id="bgOptionsPanel" class="space-y-2.5 pt-2 border-t border-slate-700/60 text-xs">
+              <div>
+                <div class="flex items-center justify-between text-[11px] mb-1">
+                  <span class="text-slate-300">Toleransi Latar</span>
+                  <span id="valBgTolerance" class="font-mono text-indigo-400 font-semibold">28%</span>
+                </div>
+                <input type="range" id="paramBgTolerance" min="5" max="80" step="1" value="28" class="w-full accent-indigo-500 bg-slate-800 rounded h-1.5 cursor-pointer">
+              </div>
+
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                <span class="text-slate-300">Target Warna:</span>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-1 cursor-pointer">
+                    <input type="radio" name="bgTargetColor" value="auto" checked class="accent-indigo-500">
+                    <span class="text-[10px] text-slate-300">Deteksi Pojok</span>
+                  </label>
+                  <label class="flex items-center gap-1 cursor-pointer">
+                    <input type="radio" name="bgTargetColor" value="white" class="accent-indigo-500">
+                    <span class="text-[10px] text-slate-300">Putih Murni</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Presets -->
+          <div>
+            <label class="text-xs font-bold text-slate-300 block mb-2 flex items-center justify-between">
+              <span>Preset Mode Vector</span>
+              <span class="text-[10px] text-sky-400">Optimasi Cepat</span>
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="preset-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700/80 active:bg-slate-700 border border-sky-500 text-left text-xs transition" data-preset="logo">
+                <div class="font-bold text-white text-[11px] flex items-center gap-1">
+                  <i data-lucide="shield" class="w-3 h-3 text-sky-400"></i> Logo / Ilustrasi
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">Warna tegas, kurva halus</p>
+              </button>
+
+              <button class="preset-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700/80 active:bg-slate-700 border border-slate-700 text-left text-xs transition" data-preset="bw">
+                <div class="font-bold text-white text-[11px] flex items-center gap-1">
+                  <i data-lucide="contrast" class="w-3 h-3 text-emerald-400"></i> Hitam & Putih
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">Siluet & stempel</p>
+              </button>
+
+              <button class="preset-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700/80 active:bg-slate-700 border border-slate-700 text-left text-xs transition" data-preset="detailed">
+                <div class="font-bold text-white text-[11px] flex items-center gap-1">
+                  <i data-lucide="sparkle" class="w-3 h-3 text-purple-400"></i> Detail Tinggi
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">Gradasi kaya warna</p>
+              </button>
+
+              <button class="preset-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700/80 active:bg-slate-700 border border-slate-700 text-left text-xs transition" data-preset="pixelart">
+                <div class="font-bold text-white text-[11px] flex items-center gap-1">
+                  <i data-lucide="box" class="w-3 h-3 text-amber-400"></i> Sharp / Pixel
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">Sudut tajam persegi</p>
+              </button>
+            </div>
+          </div>
+
+          <!-- Fine Tuning Parameters -->
+          <div class="space-y-3 pt-2 border-t border-slate-800">
+            <h4 class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-sky-400"></i> Penyetelan Halus
+            </h4>
+
+            <!-- Number of Colors -->
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-slate-300">Jumlah Warna</span>
+                <span id="valNumberOfColors" class="font-mono text-sky-400 font-semibold">16</span>
+              </div>
+              <input type="range" id="paramNumberOfColors" min="2" max="48" step="1" value="16" class="w-full accent-sky-500 bg-slate-800 rounded h-1.5 cursor-pointer">
+            </div>
+
+            <!-- Path Omit / Speckle Filter -->
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-slate-300">Filter Bintik (Noise)</span>
+                <span id="valNoiseFilter" class="font-mono text-sky-400 font-semibold">8 px</span>
+              </div>
+              <input type="range" id="paramNoiseFilter" min="1" max="64" step="1" value="8" class="w-full accent-sky-500 bg-slate-800 rounded h-1.5 cursor-pointer">
+            </div>
+
+            <!-- Curve Rounding -->
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-slate-300">Kelengkungan Sudut</span>
+                <span id="valRoundThreshold" class="font-mono text-sky-400 font-semibold">1.0</span>
+              </div>
+              <input type="range" id="paramRoundThreshold" min="0.1" max="3.0" step="0.1" value="1.0" class="w-full accent-sky-500 bg-slate-800 rounded h-1.5 cursor-pointer">
+            </div>
+
+            <!-- Layer Stacking -->
+            <div class="pt-1">
+              <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                <input type="checkbox" id="checkStacking" checked class="w-4 h-4 rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0 accent-sky-500">
+                <span>Layer Stacking (Cegah celah garis antar kurva)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Trigger Trace Button -->
+          <div class="pt-1">
+            <button id="btnApplyTrace" class="w-full py-3 px-4 bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-600 hover:from-sky-500 hover:to-indigo-500 active:scale-[0.98] text-white rounded-xl text-xs font-bold shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 transition cursor-pointer">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+              <span>Proses Ulang Vektor</span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Tab 2: Color Palette Inspector -->
+        <div id="tabPaletteContent" class="hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-semibold text-slate-300">Palet Warna Vektor</h4>
+            <span id="paletteCountLabel" class="text-[10px] text-slate-400">0 warna terdeteksi</span>
+          </div>
+          <p class="text-[11px] text-slate-400">Ketuk warna untuk menyalin kode hex atau menyorot kurva pada gambar.</p>
+          
+          <div id="paletteGrid" class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-72 overflow-y-auto custom-scroll pr-1">
+            <div class="col-span-4 text-center py-8 text-xs text-slate-500">Belum ada gambar yang diproses.</div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Code & Export Options -->
+        <div id="tabExportContent" class="hidden space-y-4">
+          <div>
+            <h4 class="text-xs font-semibold text-slate-200 mb-1">Pratinjau Kode SVG Bersih</h4>
+            <p class="text-[11px] text-slate-400 mb-2">Kode XML murni siap pakai di Illustrator, Figma, atau HTML.</p>
+            <div class="relative">
+              <pre id="svgRawCode" class="w-full h-36 sm:h-44 bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[10px] font-mono text-slate-300 overflow-x-auto overflow-y-auto custom-scroll select-all">// Kode SVG akan tampil di sini...</pre>
+              <button id="btnCopyRawCode" class="absolute top-2 right-2 px-2 py-1 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white rounded text-[10px] font-medium border border-slate-700 flex items-center gap-1 shadow">
+                <i data-lucide="copy" class="w-3 h-3"></i> Salin
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-2 pt-2 border-t border-slate-800">
+            <h5 class="text-xs font-semibold text-slate-300">Unduh Format Vektor & Gambar</h5>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button id="btnDownloadSvgTab" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow">
+                <i data-lucide="file-code" class="w-3.5 h-3.5"></i> Unduh File .SVG
+              </button>
+              <button id="btnDownloadPngHiRes" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center justify-center gap-1.5">
+                <i data-lucide="image" class="w-3.5 h-3.5"></i> Unduh PNG 4X
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- PAGE 2: DASHBOARD RIWAYAT (HISTORY & GALLERY) -->
+  <!-- ======================================================== -->
+  <div id="pageHistory" class="page-view hidden flex-1 flex flex-col p-3 sm:p-6 lg:p-8 overflow-y-auto custom-scroll max-w-7xl mx-auto w-full">
+    
+    <!-- Dashboard Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 sm:pb-6 border-b border-slate-800">
+      <div>
+        <h1 class="text-lg sm:text-2xl font-black text-white flex items-center gap-2">
+          <i data-lucide="history" class="w-5 h-5 sm:w-6 sm:h-6 text-sky-400"></i>
+          <span>Dashboard Riwayat Vektorisasi</span>
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-400 mt-1">Daftar berkas yang pernah di-trace di browser Anda. Tersimpan aman secara lokal di perangkat.</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btnClearAllHistory" class="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 active:bg-rose-900 border border-rose-800/40 text-rose-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Bersihkan Semua
+        </button>
+        <button onclick="navigatePage('studio')" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition shadow">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tracing Baru
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Cards Summary -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5 my-4 sm:my-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 sm:p-4">
+        <span class="text-[11px] sm:text-xs text-slate-400 font-medium">Total Gambar</span>
+        <h3 id="statTotalImages" class="text-xl sm:text-2xl font-black text-white mt-1">0</h3>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 sm:p-4">
+        <span class="text-[11px] sm:text-xs text-slate-400 font-medium">Total Kurva Path</span>
+        <h3 id="statTotalPaths" class="text-xl sm:text-2xl font-black text-sky-400 mt-1">0</h3>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 sm:p-4">
+        <span class="text-[11px] sm:text-xs text-slate-400 font-medium">Hapus Background</span>
+        <h3 id="statBgRemoved" class="text-xl sm:text-2xl font-black text-indigo-400 mt-1">Aktif</h3>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 sm:p-4">
+        <span class="text-[11px] sm:text-xs text-slate-400 font-medium">Penyimpanan</span>
+        <h3 class="text-xl sm:text-2xl font-black text-emerald-400 mt-1">Lokal Cepat</h3>
+      </div>
+    </div>
+
+    <!-- Filter & Search Toolbar -->
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <div class="relative flex-1 max-w-xs sm:max-w-sm">
+        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+        <input type="text" id="searchHistoryInput" placeholder="Cari nama berkas..." class="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500">
+      </div>
+    </div>
+
+    <!-- History Items Gallery Grid -->
+    <div id="historyGridContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+      <!-- Injected by JavaScript -->
+    </div>
+
+    <!-- Empty History State -->
+    <div id="historyEmptyState" class="hidden flex-col items-center justify-center text-center py-12 sm:py-16 px-4 bg-slate-900/40 rounded-2xl border border-slate-800/80 my-4">
+      <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-800/80 flex items-center justify-center text-slate-500 mb-3">
+        <i data-lucide="archive-x" class="w-7 h-7 sm:w-8 sm:h-8"></i>
+      </div>
+      <h3 class="text-sm font-bold text-slate-300">Belum Ada Riwayat</h3>
+      <p class="text-xs text-slate-500 max-w-sm mt-1 mb-4">Setiap gambar yang Anda konversi di studio akan tercatat di sini secara otomatis.</p>
+      <button onclick="navigatePage('studio')" class="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition">
+        Buka Studio Tracing
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- PAGE 3: PANDUAN DEPLOYMENT GITHUB & VERCEL -->
+  <!-- ======================================================== -->
+  <div id="pageDocs" class="page-view hidden flex-1 flex flex-col p-3 sm:p-6 lg:p-8 overflow-y-auto custom-scroll max-w-5xl mx-auto w-full space-y-4 sm:space-y-6">
+    
+    <div>
+      <h1 class="text-lg sm:text-2xl font-black text-white flex items-center gap-2">
+        <i data-lucide="rocket" class="w-5 h-5 sm:w-6 sm:h-6 text-sky-400"></i>
+        <span>Panduan Deploy ke GitHub & Vercel</span>
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-400 mt-1">Langkah singkat menerbitkan aplikasi ini ke tautan <strong>masbadel-vector.vercel.app</strong>.</p>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 space-y-2.5">
+      <div class="flex items-center gap-3">
+        <span class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-sky-500 text-white font-black text-xs flex items-center justify-center shrink-0">1</span>
+        <h3 class="text-xs sm:text-sm font-bold text-white">Buat Repositori GitHub & Push index.html</h3>
+      </div>
+      <p class="text-xs text-slate-300">Simpan berkas ini sebagai <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-400 font-mono text-[11px]">index.html</code> lalu jalankan baris perintah berikut di terminal folder Anda:</p>
+      <pre class="bg-slate-950 p-2.5 sm:p-3 rounded-lg border border-slate-800 text-[10px] sm:text-[11px] font-mono text-slate-300 overflow-x-auto leading-relaxed">git init
+git add index.html
+git commit -m "feat: Vectorizer Studio with BG Removal & History"
+git branch -M main
+git remote add origin https://github.com/USERNAME-ANDA/masbadel-vector.git
+git push -u origin main</pre>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 space-y-2.5">
+      <div class="flex items-center gap-3">
+        <span class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-500 text-white font-black text-xs flex items-center justify-center shrink-0">2</span>
+        <h3 class="text-xs sm:text-sm font-bold text-white">Hubungkan ke Vercel (vercel.com)</h3>
+      </div>
+      <ol class="text-xs text-slate-300 list-decimal list-inside space-y-1">
+        <li>Buka <a href="https://vercel.com" target="_blank" class="text-sky-400 underline font-semibold">Vercel.com</a> dan masuk menggunakan akun GitHub Anda.</li>
+        <li>Pilih tombol <strong>"Add New..." &rarr; "Project"</strong>.</li>
+        <li>Impor repositori <strong>masbadel-vector</strong>.</li>
+        <li>Biarkan <strong>Framework Preset</strong> pada <em>"Other"</em> (karena berbasis Client-side SPA murni).</li>
+        <li>Klik tombol <strong>Deploy</strong>.</li>
+      </ol>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 space-y-2.5">
+      <div class="flex items-center gap-3">
+        <span class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-emerald-500 text-white font-black text-xs flex items-center justify-center shrink-0">3</span>
+        <h3 class="text-xs sm:text-sm font-bold text-white">Tetapkan Domain masbadel-vector.vercel.app</h3>
+      </div>
+      <p class="text-xs text-slate-300">Setelah proyek selesai dideploy, masuk ke menu <strong>Settings &rarr; Domains</strong> di dashboard Vercel Anda, lalu pastikan domain yang aktif adalah <code class="bg-slate-950 px-2 py-0.5 rounded text-emerald-400 font-mono text-xs">masbadel-vector.vercel.app</code>.</p>
+    </div>
+
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toastNotification" class="fixed bottom-4 sm:bottom-5 right-4 sm:right-5 z-50 transform translate-y-10 opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 border border-sky-500/50 text-white px-3.5 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs">
+    <i data-lucide="check-circle" class="w-4 h-4 text-sky-400 shrink-0"></i>
+    <span id="toastMessage">Operasi Berhasil!</span>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION CORE -->
+  <script>
+    // State Model
+    const state = {
+      currentPage: 'studio',
+      imageLoaded: false,
+      currentFileName: 'gambar-vektor.png',
+      rawImage: null,
+      processedCanvas: null,
+      imageWidth: 512,
+      imageHeight: 512,
+      svgOutputString: '',
+      viewMode: 'split',
+      wireframe: false,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      isPanning: false,
+      startPanX: 0,
+      startPanY: 0,
+      splitPercent: 50,
+      isDraggingSplit: false,
+      activePreset: 'logo',
+      paletteColors: [],
+      historyList: [],
+      // Touch Gesture Support
+      initialPinchDistance: null,
+      initialZoom: 1
+    };
+
+    // DOM Elements - Navigation
+    const navStudioBtn = document.getElementById('navStudioBtn');
+    const navHistoryBtn = document.getElementById('navHistoryBtn');
+    const navDocsBtn = document.getElementById('navDocsBtn');
+    const pageStudio = document.getElementById('pageStudio');
+    const pageHistory = document.getElementById('pageHistory');
+    const pageDocs = document.getElementById('pageDocs');
+    const historyCountBadge = document.getElementById('historyCountBadge');
+    const mobileHistoryCountBadge = document.getElementById('mobileHistoryCountBadge');
+    const mobileNavMenuBtn = document.getElementById('mobileNavMenuBtn');
+    const mobileDrawer = document.getElementById('mobileDrawer');
+
+    // DOM Elements - Studio
+    const dropzonePrompt = document.getElementById('dropzonePrompt');
+    const stageContainer = document.getElementById('stageContainer');
+    const zoomViewport = document.getElementById('zoomViewport');
+    const comparisonBox = document.getElementById('comparisonBox');
+    const rasterOriginalImg = document.getElementById('rasterOriginalImg');
+    const vectorClipContainer = document.getElementById('vectorClipContainer');
+    const svgMountPoint = document.getElementById('svgMountPoint');
+    const swipeDivider = document.getElementById('swipeDivider');
+    const traceSpinner = document.getElementById('traceSpinner');
+    const traceStatusText = document.getElementById('traceStatusText');
+    const traceSubText = document.getElementById('traceSubText');
+
+    // Upload & Triggers
+    const fileUploadInput = document.getElementById('fileUploadInput');
+    const btnHeaderUpload = document.getElementById('btnHeaderUpload');
+    const sidebarDropzone = document.getElementById('sidebarDropzone');
+    const btnBrowseComputer = document.getElementById('btnBrowseComputer');
+    const btnOpenSample = document.getElementById('btnOpenSample');
+    const btnLoadDemo = document.getElementById('btnLoadDemo');
+    const btnApplyTrace = document.getElementById('btnApplyTrace');
+
+    // Downloads & Code
+    const btnDownloadSvg = document.getElementById('btnDownloadSvg');
+    const btnDownloadSvgTab = document.getElementById('btnDownloadSvgTab');
+    const btnDownloadPngHiRes = document.getElementById('btnDownloadPngHiRes');
+    const btnCopySvgCode = document.getElementById('btnCopySvgCode');
+    const btnCopyRawCode = document.getElementById('btnCopyRawCode');
+    const svgRawCode = document.getElementById('svgRawCode');
+
+    // Parameters & Controls
+    const paramNumberOfColors = document.getElementById('paramNumberOfColors');
+    const valNumberOfColors = document.getElementById('valNumberOfColors');
+    const paramNoiseFilter = document.getElementById('paramNoiseFilter');
+    const valNoiseFilter = document.getElementById('valNoiseFilter');
+    const paramRoundThreshold = document.getElementById('paramRoundThreshold');
+    const valRoundThreshold = document.getElementById('valRoundThreshold');
+    const checkStacking = document.getElementById('checkStacking');
+    
+    // Background Removal
+    const checkRemoveBg = document.getElementById('checkRemoveBg');
+    const paramBgTolerance = document.getElementById('paramBgTolerance');
+    const valBgTolerance = document.getElementById('valBgTolerance');
+
+    // Viewport controls
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const zoomResetBtn = document.getElementById('zoomResetBtn');
+    const zoomLevelDisplay = document.getElementById('zoomLevelDisplay');
+    const modeSplit = document.getElementById('modeSplit');
+    const modeSideBySide = document.getElementById('modeSideBySide');
+    const modeVectorOnly = document.getElementById('modeVectorOnly');
+    const toggleWireframe = document.getElementById('toggleWireframe');
+    const badgeOriginal = document.getElementById('badgeOriginal');
+    const badgeVector = document.getElementById('badgeVector');
+
+    // Stats
+    const canvasDimInfo = document.getElementById('canvasDimInfo');
+    const pathCountInfo = document.getElementById('pathCountInfo');
+    const colorsCountInfo = document.getElementById('colorsCountInfo');
+    const fileSizeInfo = document.getElementById('fileSizeInfo');
+
+    // Tabs
+    const tabSettingsBtn = document.getElementById('tabSettingsBtn');
+    const tabPaletteBtn = document.getElementById('tabPaletteBtn');
+    const tabExportBtn = document.getElementById('tabExportBtn');
+    const tabSettingsContent = document.getElementById('tabSettingsContent');
+    const tabPaletteContent = document.getElementById('tabPaletteContent');
+    const tabExportContent = document.getElementById('tabExportContent');
+    const paletteGrid = document.getElementById('paletteGrid');
+    const paletteCountLabel = document.getElementById('paletteCountLabel');
+
+    // History elements
+    const historyGridContainer = document.getElementById('historyGridContainer');
+    const historyEmptyState = document.getElementById('historyEmptyState');
+    const btnClearAllHistory = document.getElementById('btnClearAllHistory');
+    const searchHistoryInput = document.getElementById('searchHistoryInput');
+    const statTotalImages = document.getElementById('statTotalImages');
+    const statTotalPaths = document.getElementById('statTotalPaths');
+
+    function refreshIcons() {
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toastNotification');
+      const text = document.getElementById('toastMessage');
+      text.textContent = message;
+      toast.classList.remove('opacity-0', 'translate-y-10');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-10');
+      }, 2400);
+    }
+
+    // SPA Page Navigation
+    function navigatePage(target) {
+      state.currentPage = target;
+      [pageStudio, pageHistory, pageDocs].forEach(p => p.classList.add('hidden'));
+      [navStudioBtn, navHistoryBtn, navDocsBtn].forEach(b => {
+        b.classList.remove('bg-sky-600', 'text-white', 'shadow-sm');
+        b.classList.add('text-slate-400');
+      });
+
+      if (target === 'studio') {
+        pageStudio.classList.remove('hidden');
+        navStudioBtn.classList.add('bg-sky-600', 'text-white', 'shadow-sm');
+        navStudioBtn.classList.remove('text-slate-400');
+      } else if (target === 'history') {
+        pageHistory.classList.remove('hidden');
+        navHistoryBtn.classList.add('bg-sky-600', 'text-white', 'shadow-sm');
+        navHistoryBtn.classList.remove('text-slate-400');
+        renderHistoryList();
+      } else if (target === 'docs') {
+        pageDocs.classList.remove('hidden');
+        navDocsBtn.classList.add('bg-sky-600', 'text-white', 'shadow-sm');
+        navDocsBtn.classList.remove('text-slate-400');
+      }
+      refreshIcons();
+    }
+
+    function toggleMobileMenu() {
+      mobileDrawer.classList.toggle('hidden');
+    }
+
+    // Demo Canvas Logo
+    function generateDemoCanvas() {
+      const size = 512;
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const ctx = c.getContext('2d');
+
+      ctx.clearRect(0, 0, size, size);
+
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // Outer Crest
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 210, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wing 1 (Sky Blue)
+      ctx.fillStyle = '#0284c7';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 140);
+      ctx.lineTo(cx + 150, cy - 60);
+      ctx.lineTo(cx + 90, cy + 80);
+      ctx.lineTo(cx, cy + 20);
+      ctx.closePath();
+      ctx.fill();
+
+      // Wing 2 (Cyan)
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(cx - 30, cy - 120);
+      ctx.lineTo(cx - 160, cy - 40);
+      ctx.lineTo(cx - 90, cy + 70);
+      ctx.lineTo(cx - 20, cy + 10);
+      ctx.closePath();
+      ctx.fill();
+
+      // Body (Amber Gold)
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 170);
+      ctx.lineTo(cx + 40, cy - 30);
+      ctx.lineTo(cx, cy + 130);
+      ctx.lineTo(cx - 40, cy - 30);
+      ctx.closePath();
+      ctx.fill();
+
+      // Head
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 170);
+      ctx.lineTo(cx + 25, cy - 120);
+      ctx.lineTo(cx - 25, cy - 120);
+      ctx.closePath();
+      ctx.fill();
+
+      // Eye
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 80, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 80, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      return c.toDataURL('image/png');
+    }
+
+    // Responsive Canvas Resizing for Mobile & Desktop
+    function fitStageDimensions(w, h) {
+      const stageRect = stageContainer.getBoundingClientRect();
+      const availableW = Math.max(280, (stageRect.width || window.innerWidth) - 32);
+      const availableH = Math.max(280, (stageRect.height || (window.innerHeight * 0.45)) - 32);
+
+      let targetW = w;
+      let targetH = h;
+      const ratio = w / h;
+
+      if (targetW > availableW || targetH > availableH) {
+        if (targetW / availableW > targetH / availableH) {
+          targetW = availableW;
+          targetH = Math.round(targetW / ratio);
+        } else {
+          targetH = availableH;
+          targetW = Math.round(targetH * ratio);
+        }
+      }
+
+      comparisonBox.style.width = `${targetW}px`;
+      comparisonBox.style.height = `${targetH}px`;
+      canvasDimInfo.textContent = `${w}×${h}px`;
+
+      state.zoom = 1;
+      state.panX = 0;
+      state.panY = 0;
+      updateTransform();
+    }
+
+    function loadNewImageSrc(src, fileName = 'gambar-vektor.png') {
+      traceSpinner.classList.remove('hidden');
+      traceStatusText.textContent = "Memuat Gambar...";
+      traceSubText.textContent = "Menyiapkan kanvas & memindai piksel";
+
+      state.currentFileName = fileName;
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        state.rawImage = img;
+        state.imageWidth = img.naturalWidth || 512;
+        state.imageHeight = img.naturalHeight || 512;
+        rasterOriginalImg.src = src;
+
+        fitStageDimensions(state.imageWidth, state.imageHeight);
+        dropzonePrompt.classList.add('opacity-0', 'pointer-events-none');
+        state.imageLoaded = true;
+        btnDownloadSvg.disabled = false;
+
+        setTimeout(() => {
+          performFullTraceProcess();
+        }, 50);
+      };
+      img.onerror = () => {
+        traceSpinner.classList.add('hidden');
+        showToast("Gagal memuat gambar!");
+      };
+      img.src = src;
+    }
+
+    // Smart Background Removal Algorithm
+    function applySmartBackgroundRemoval(sourceCanvas, tolerancePct, mode = 'auto') {
+      const w = sourceCanvas.width;
+      const h = sourceCanvas.height;
+      const ctx = sourceCanvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      let targetR = 255, targetG = 255, targetB = 255;
+      if (mode === 'auto') {
+        const corners = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
+        let r = 0, g = 0, b = 0, valid = 0;
+        corners.forEach(idx => {
+          if (data[idx + 3] > 10) {
+            r += data[idx];
+            g += data[idx + 1];
+            b += data[idx + 2];
+            valid++;
+          }
+        });
+        if (valid > 0) {
+          targetR = r / valid;
+          targetG = g / valid;
+          targetB = b / valid;
+        }
+      }
+
+      const threshold = (tolerancePct / 100) * 441.6;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const a = data[i + 3];
+        if (a === 0) continue;
+
+        const pr = data[i];
+        const pg = data[i + 1];
+        const pb = data[i + 2];
+
+        const dist = Math.sqrt((pr - targetR) ** 2 + (pg - targetG) ** 2 + (pb - targetB) ** 2);
+        if (dist <= threshold) {
+          data[i + 3] = 0;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      return sourceCanvas;
+    }
+
+    // Vector Tracing Process
+    function performFullTraceProcess() {
+      if (!state.rawImage) return;
+
+      if (typeof ImageTracer === 'undefined') {
+        showToast("Menunggu engine ImageTracer...");
+        setTimeout(performFullTraceProcess, 500);
+        return;
+      }
+
+      traceSpinner.classList.remove('hidden');
+      traceStatusText.textContent = "Menghitung Kurva Bezier...";
+      traceSubText.textContent = "Membersihkan noise & optimasi layer SVG";
+
+      setTimeout(() => {
+        try {
+          const offCanvas = document.createElement('canvas');
+          offCanvas.width = state.imageWidth;
+          offCanvas.height = state.imageHeight;
+          const ctx = offCanvas.getContext('2d');
+          ctx.drawImage(state.rawImage, 0, 0);
+
+          const shouldRemoveBg = checkRemoveBg.checked;
+          if (shouldRemoveBg) {
+            const tolerance = parseInt(paramBgTolerance.value, 10);
+            const targetColorMode = document.querySelector('input[name="bgTargetColor"]:checked')?.value || 'auto';
+            applySmartBackgroundRemoval(offCanvas, tolerance, targetColorMode);
+          }
+
+          state.processedCanvas = offCanvas;
+
+          const numColors = parseInt(paramNumberOfColors.value, 10);
+          const noiseCutoff = parseInt(paramNoiseFilter.value, 10);
+          const roundCurve = parseFloat(paramRoundThreshold.value);
+          const isStacked = checkStacking.checked;
+
+          const options = {
+            corsenabled: true,
+            ltres: roundCurve,
+            qtres: roundCurve,
+            pathomit: noiseCutoff,
+            rightangleenhance: (state.activePreset === 'pixelart'),
+            colorsampling: 2,
+            numberofcolors: numColors,
+            mincolorratio: 0.01,
+            colorquantcycles: 4,
+            layering: isStacked ? 0 : 1,
+            scale: 1,
+            viewbox: true,
+            desc: false,
+            roundcoords: 2
+          };
+
+          if (state.activePreset === 'bw') {
+            options.numberofcolors = 2;
+            options.colorsampling = 0;
+          }
+
+          const imgData = ctx.getImageData(0, 0, state.imageWidth, state.imageHeight);
+          let svgString = ImageTracer.imagedataToSVG(imgData, options);
+
+          if (shouldRemoveBg) {
+            // Remove dominant border background rectangle if created
+            svgString = svgString.replace(/<rect x="0" y="0"[^>]+fill="rgb\((2[4-5]\d|255),(2[4-5]\d|255),(2[4-5]\d|255)\)"\/>/gi, '');
+          }
+
+          state.svgOutputString = svgString;
+          svgMountPoint.innerHTML = svgString;
+
+          const svgEl = svgMountPoint.querySelector('svg');
+          if (svgEl) {
+            svgEl.setAttribute('width', '100%');
+            svgEl.setAttribute('height', '100%');
+            svgEl.style.display = 'block';
+            svgEl.style.shapeRendering = state.activePreset === 'pixelart' ? 'crispEdges' : 'geometricPrecision';
+            applyWireframeStyle(svgEl);
+          }
+
+          const stats = updateVectorStats(svgString);
+          extractPalette(svgString);
+          svgRawCode.textContent = svgString;
+
+          saveRecordToHistory({
+            id: 'vec_' + Date.now(),
+            name: state.currentFileName,
+            date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+            paths: stats.paths,
+            sizeKb: stats.sizeKb,
+            colors: state.paletteColors.length,
+            svg: svgString,
+            thumbnail: offCanvas.toDataURL('image/png', 0.4)
+          });
+
+          traceSpinner.classList.add('hidden');
+          showToast("Vektorisasi Berhasil!");
+        } catch (err) {
+          console.error("Tracing error: ", err);
+          traceSpinner.classList.add('hidden');
+          showToast("Gagal memproses gambar!");
+        }
+      }, 60);
+    }
+
+    function applyWireframeStyle(svgEl) {
+      if (!svgEl) return;
+      const paths = svgEl.querySelectorAll('path, polygon');
+      if (state.wireframe) {
+        paths.forEach(p => {
+          if (!p.hasAttribute('data-original-fill')) {
+            p.setAttribute('data-original-fill', p.getAttribute('fill') || '#ffffff');
+          }
+          p.setAttribute('fill', 'none');
+          p.setAttribute('stroke', '#38bdf8');
+          p.setAttribute('stroke-width', '0.75');
+        });
+      } else {
+        paths.forEach(p => {
+          const orig = p.getAttribute('data-original-fill');
+          if (orig) {
+            p.setAttribute('fill', orig);
+            p.removeAttribute('stroke');
+            p.removeAttribute('stroke-width');
+          }
+        });
+      }
+    }
+
+    function updateVectorStats(svgText) {
+      const pathMatches = svgText.match(/<path/g);
+      const polyMatches = svgText.match(/<polygon/g);
+      const totalPaths = (pathMatches ? pathMatches.length : 0) + (polyMatches ? polyMatches.length : 0);
+      pathCountInfo.textContent = `${totalPaths.toLocaleString()} Path`;
+
+      const bytes = new Blob([svgText]).size;
+      const kb = (bytes / 1024).toFixed(1);
+      fileSizeInfo.textContent = `${kb} KB`;
+
+      return { paths: totalPaths, sizeKb: kb };
+    }
+
+    function extractPalette(svgText) {
+      const colorRegex = /fill="([^"]+)"/g;
+      let match;
+      const colorsSet = new Set();
+      while ((match = colorRegex.exec(svgText)) !== null) {
+        const c = match[1];
+        if (c !== 'none') colorsSet.add(c);
+      }
+
+      state.paletteColors = Array.from(colorsSet);
+      colorsCountInfo.textContent = `${state.paletteColors.length} Warna`;
+      paletteCountLabel.textContent = `${state.paletteColors.length} warna terdeteksi`;
+
+      paletteGrid.innerHTML = '';
+      if (state.paletteColors.length === 0) {
+        paletteGrid.innerHTML = `<div class="col-span-4 text-center py-6 text-xs text-slate-500">Tidak ada palet.</div>`;
+        return;
+      }
+
+      state.paletteColors.forEach(color => {
+        const item = document.createElement('div');
+        item.className = "group relative rounded-lg bg-slate-800/80 p-1.5 border border-slate-700/60 flex flex-col items-center cursor-pointer hover:border-sky-400 active:scale-95 transition";
+        item.innerHTML = `
+          <div class="w-full h-6 sm:h-7 rounded border border-white/10 shadow-inner" style="background-color: ${color}"></div>
+          <span class="text-[9px] font-mono text-slate-300 mt-1 truncate max-w-full">${color}</span>
+        `;
+        item.addEventListener('mouseenter', () => highlightPaths(color));
+        item.addEventListener('mouseleave', () => resetHighlights());
+        item.addEventListener('click', () => {
+          highlightPaths(color);
+          copyTextDirect(color);
+          showToast(`Kode warna ${color} disalin!`);
+        });
+        paletteGrid.appendChild(item);
+      });
+    }
+
+    function highlightPaths(targetColor) {
+      const svgEl = svgMountPoint.querySelector('svg');
+      if (!svgEl) return;
+      svgEl.querySelectorAll('path, polygon').forEach(p => {
+        if (p.getAttribute('fill') === targetColor) {
+          p.style.outline = '2px solid #38bdf8';
+        } else {
+          p.style.opacity = '0.2';
+        }
+      });
+    }
+
+    function resetHighlights() {
+      const svgEl = svgMountPoint.querySelector('svg');
+      if (!svgEl) return;
+      svgEl.querySelectorAll('path, polygon').forEach(p => {
+        p.style.outline = 'none';
+        p.style.opacity = '1';
+      });
+    }
+
+    // Pan & Zoom Logic
+    function updateTransform() {
+      zoomViewport.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+      zoomLevelDisplay.textContent = `${Math.round(state.zoom * 100)}%`;
+    }
+
+    function updateSplitPosition(pct) {
+      state.splitPercent = Math.max(0, Math.min(100, pct));
+      swipeDivider.style.left = `${state.splitPercent}%`;
+      vectorClipContainer.style.clipPath = `polygon(${state.splitPercent}% 0, 100% 0, 100% 100%, ${state.splitPercent}% 100%)`;
+    }
+
+    function setViewMode(mode) {
+      state.viewMode = mode;
+      [modeSplit, modeSideBySide, modeVectorOnly].forEach(b => {
+        b.classList.remove('bg-sky-600', 'text-white');
+        b.classList.add('text-slate-300');
+      });
+
+      if (mode === 'split') {
+        modeSplit.classList.add('bg-sky-600', 'text-white');
+        swipeDivider.classList.remove('hidden');
+        rasterOriginalImg.classList.remove('hidden');
+        vectorClipContainer.classList.remove('hidden');
+        badgeOriginal.classList.remove('hidden');
+        badgeVector.classList.remove('hidden');
+        updateSplitPosition(50);
+      } else if (mode === 'side-by-side') {
+        modeSideBySide.classList.add('bg-sky-600', 'text-white');
+        swipeDivider.classList.remove('hidden');
+        rasterOriginalImg.classList.remove('hidden');
+        vectorClipContainer.classList.remove('hidden');
+        badgeOriginal.classList.remove('hidden');
+        badgeVector.classList.remove('hidden');
+        updateSplitPosition(50);
+      } else if (mode === 'vector-only') {
+        modeVectorOnly.classList.add('bg-sky-600', 'text-white');
+        swipeDivider.classList.add('hidden');
+        rasterOriginalImg.classList.add('hidden');
+        badgeOriginal.classList.add('hidden');
+        badgeVector.classList.remove('hidden');
+        vectorClipContainer.style.clipPath = 'none';
+      }
+    }
+
+    // Export & Download
+    function downloadSvgFile(customSvg = null, customName = null) {
+      const content = customSvg || state.svgOutputString;
+      if (!content) return;
+      const blob = new Blob([content], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = customName || `masbadel-vector-${Date.now()}.svg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Berkas SVG berhasil diunduh!");
+    }
+
+    function downloadSuperResPng(scaleMultiplier = 4) {
+      if (!state.svgOutputString) return;
+      const svgBlob = new Blob([state.svgOutputString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = state.imageWidth * scaleMultiplier;
+        outCanvas.height = state.imageHeight * scaleMultiplier;
+        const ctx = outCanvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, outCanvas.width, outCanvas.height);
+
+        const a = document.createElement('a');
+        a.href = outCanvas.toDataURL('image/png');
+        a.download = `masbadel-vector-4x-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("PNG Super-Res 4X tersimpan!");
+      };
+      img.src = url;
+    }
+
+    function copyTextDirect(str) {
+      const textarea = document.createElement('textarea');
+      textarea.value = str;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast("Teks disalin ke clipboard!");
+      } catch (e) {
+        showToast("Gagal menyalin!");
+      }
+      document.body.removeChild(textarea);
+    }
+
+    // Local History Persistence
+    function loadHistoryFromStorage() {
+      try {
+        const raw = localStorage.getItem('masbadel_vector_history');
+        if (raw) {
+          state.historyList = JSON.parse(raw);
+        }
+      } catch (e) {
+        state.historyList = [];
+      }
+      updateHistoryBadge();
+    }
+
+    function saveRecordToHistory(item) {
+      state.historyList.unshift(item);
+      if (state.historyList.length > 20) {
+        state.historyList.pop();
+      }
+      try {
+        localStorage.setItem('masbadel_vector_history', JSON.stringify(state.historyList));
+      } catch (e) {
+        console.warn("Storage full", e);
+      }
+      updateHistoryBadge();
+    }
+
+    function updateHistoryBadge() {
+      const count = state.historyList.length;
+      if (historyCountBadge) historyCountBadge.textContent = count;
+      if (mobileHistoryCountBadge) mobileHistoryCountBadge.textContent = count;
+    }
+
+    function deleteHistoryItem(id) {
+      state.historyList = state.historyList.filter(item => item.id !== id);
+      try {
+        localStorage.setItem('masbadel_vector_history', JSON.stringify(state.historyList));
+      } catch (e) {}
+      updateHistoryBadge();
+      renderHistoryList();
+      showToast("Riwayat dihapus.");
+    }
+
+    function clearAllHistory() {
+      state.historyList = [];
+      try {
+        localStorage.removeItem('masbadel_vector_history');
+      } catch (e) {}
+      updateHistoryBadge();
+      renderHistoryList();
+      showToast("Semua riwayat dibersihkan.");
+    }
+
+    function renderHistoryList() {
+      const query = (searchHistoryInput.value || '').toLowerCase();
+      const filtered = state.historyList.filter(item => item.name.toLowerCase().includes(query));
+
+      let totalPaths = 0;
+      state.historyList.forEach(item => totalPaths += (item.paths || 0));
+      statTotalImages.textContent = state.historyList.length;
+      statTotalPaths.textContent = totalPaths.toLocaleString();
+
+      historyGridContainer.innerHTML = '';
+      if (filtered.length === 0) {
+        historyEmptyState.classList.remove('hidden');
+        historyEmptyState.classList.add('flex');
+        return;
+      }
+
+      historyEmptyState.classList.add('hidden');
+      historyEmptyState.classList.remove('flex');
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-sky-500/50 transition shadow-lg flex flex-col";
+        card.innerHTML = `
+          <div class="h-32 sm:h-36 bg-checker flex items-center justify-center p-3 relative group">
+            <img src="${item.thumbnail}" class="max-h-full max-w-full object-contain drop-shadow" alt="${item.name}">
+            <div class="absolute inset-0 bg-slate-950/70 sm:opacity-0 sm:group-hover:opacity-100 transition flex items-center justify-center gap-2">
+              <button class="btn-load-again px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow">
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Buka
+              </button>
+              <button class="btn-down-hist px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i> SVG
+              </button>
+            </div>
+          </div>
+          <div class="p-3 sm:p-3.5 flex-1 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <h4 class="text-xs font-bold text-white truncate" title="${item.name}">${item.name}</h4>
+                <button class="btn-del-hist text-slate-500 hover:text-rose-400 p-1 rounded" title="Hapus">
+                  <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+              <span class="text-[10px] text-slate-400 block mt-0.5">${item.date}</span>
+            </div>
+
+            <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400">
+              <span>${item.paths} Path</span>
+              <span>${item.colors} Warna</span>
+              <span class="text-sky-400 font-mono font-semibold">${item.sizeKb} KB</span>
+            </div>
+          </div>
+        `;
+
+        card.querySelector('.btn-load-again').addEventListener('click', () => {
+          loadNewImageSrc(item.thumbnail, item.name);
+          navigatePage('studio');
+        });
+        card.querySelector('.btn-down-hist').addEventListener('click', () => {
+          downloadSvgFile(item.svg, `${item.name.replace(/\.[^/.]+$/, "")}.svg`);
+        });
+        card.querySelector('.btn-del-hist').addEventListener('click', () => {
+          deleteHistoryItem(item.id);
+        });
+
+        historyGridContainer.appendChild(card);
+      });
+
+      refreshIcons();
+    }
+
+    // Event Listeners Setup (Desktop & Touch Mobile)
+    function setupEventListeners() {
+      // Presets
+      const presetBtns = document.querySelectorAll('.preset-btn');
+      presetBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          presetBtns.forEach(b => {
+            b.classList.remove('border-sky-500');
+            b.classList.add('border-slate-700');
+          });
+          btn.classList.add('border-sky-500');
+          btn.classList.remove('border-slate-700');
+
+          const p = btn.getAttribute('data-preset');
+          state.activePreset = p;
+
+          if (p === 'logo') {
+            paramNumberOfColors.value = 16;
+            paramNoiseFilter.value = 8;
+            paramRoundThreshold.value = 1.0;
+            checkStacking.checked = true;
+          } else if (p === 'bw') {
+            paramNumberOfColors.value = 2;
+            paramNoiseFilter.value = 4;
+            paramRoundThreshold.value = 1.2;
+            checkStacking.checked = false;
+          } else if (p === 'detailed') {
+            paramNumberOfColors.value = 32;
+            paramNoiseFilter.value = 2;
+            paramRoundThreshold.value = 0.5;
+            checkStacking.checked = true;
+          } else if (p === 'pixelart') {
+            paramNumberOfColors.value = 16;
+            paramNoiseFilter.value = 1;
+            paramRoundThreshold.value = 0.1;
+            checkStacking.checked = false;
+          }
+
+          valNumberOfColors.textContent = paramNumberOfColors.value;
+          valNoiseFilter.textContent = `${paramNoiseFilter.value} px`;
+          valRoundThreshold.textContent = paramRoundThreshold.value;
+
+          if (state.imageLoaded) performFullTraceProcess();
+        });
+      });
+
+      paramNumberOfColors.addEventListener('input', (e) => valNumberOfColors.textContent = e.target.value);
+      paramNoiseFilter.addEventListener('input', (e) => valNoiseFilter.textContent = `${e.target.value} px`);
+      paramRoundThreshold.addEventListener('input', (e) => valRoundThreshold.textContent = e.target.value);
+      paramBgTolerance.addEventListener('input', (e) => valBgTolerance.textContent = `${e.target.value}%`);
+
+      btnApplyTrace.addEventListener('click', performFullTraceProcess);
+
+      // Tab switcher
+      const tabs = [
+        { btn: tabSettingsBtn, content: tabSettingsContent },
+        { btn: tabPaletteBtn, content: tabPaletteContent },
+        { btn: tabExportBtn, content: tabExportContent }
+      ];
+      tabs.forEach(t => {
+        t.btn.addEventListener('click', () => {
+          tabs.forEach(o => {
+            o.btn.classList.remove('border-sky-500', 'text-white', 'bg-slate-800/40');
+            o.btn.classList.add('border-transparent', 'text-slate-400');
+            o.content.classList.add('hidden');
+          });
+          t.btn.classList.add('border-sky-500', 'text-white', 'bg-slate-800/40');
+          t.btn.classList.remove('border-transparent', 'text-slate-400');
+          t.content.classList.remove('hidden');
+        });
+      });
+
+      // Mouse Wheel Zoom
+      stageContainer.addEventListener('wheel', (e) => {
+        if (!state.imageLoaded) return;
+        e.preventDefault();
+        const factor = 1.15;
+        if (e.deltaY < 0) {
+          state.zoom = Math.min(state.zoom * factor, 24);
+        } else {
+          state.zoom = Math.max(state.zoom / factor, 0.25);
+        }
+        updateTransform();
+      }, { passive: false });
+
+      // Mouse Pan
+      stageContainer.addEventListener('mousedown', (e) => {
+        if (e.target.closest('#swipeDivider')) return;
+        state.isPanning = true;
+        state.startPanX = e.clientX - state.panX;
+        state.startPanY = e.clientY - state.panY;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (state.isDraggingSplit) {
+          const rect = comparisonBox.getBoundingClientRect();
+          const offsetX = e.clientX - rect.left;
+          updateSplitPosition((offsetX / rect.width) * 100);
+          return;
+        }
+        if (state.isPanning) {
+          state.panX = e.clientX - state.startPanX;
+          state.panY = e.clientY - state.startPanY;
+          updateTransform();
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        state.isPanning = false;
+        state.isDraggingSplit = false;
+      });
+
+      swipeDivider.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        state.isDraggingSplit = true;
+      });
+
+      // Mobile Touch Gesture Support (1 Finger Pan & Swipe / 2 Fingers Pinch-to-zoom)
+      stageContainer.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          const touch = e.touches[0];
+          const dividerRect = swipeDivider.getBoundingClientRect();
+          if (Math.abs(touch.clientX - (dividerRect.left + dividerRect.width / 2)) < 24) {
+            state.isDraggingSplit = true;
+            return;
+          }
+          state.isPanning = true;
+          state.startPanX = touch.clientX - state.panX;
+          state.startPanY = touch.clientY - state.panY;
+        } else if (e.touches.length === 2) {
+          state.isPanning = false;
+          state.isDraggingSplit = false;
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          state.initialPinchDistance = Math.hypot(dx, dy);
+          state.initialZoom = state.zoom;
+        }
+      }, { passive: false });
+
+      stageContainer.addEventListener('touchmove', (e) => {
+        if (e.cancelable) e.preventDefault();
+
+        if (state.isDraggingSplit && e.touches.length === 1) {
+          const rect = comparisonBox.getBoundingClientRect();
+          const offsetX = e.touches[0].clientX - rect.left;
+          updateSplitPosition((offsetX / rect.width) * 100);
+          return;
+        }
+
+        if (state.isPanning && e.touches.length === 1) {
+          state.panX = e.touches[0].clientX - state.startPanX;
+          state.panY = e.touches[0].clientY - state.startPanY;
+          updateTransform();
+          return;
+        }
+
+        if (e.touches.length === 2 && state.initialPinchDistance) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const dist = Math.hypot(dx, dy);
+          const scale = dist / state.initialPinchDistance;
+          state.zoom = Math.max(0.25, Math.min(24, state.initialZoom * scale));
+          updateTransform();
+        }
+      }, { passive: false });
+
+      stageContainer.addEventListener('touchend', () => {
+        state.isPanning = false;
+        state.isDraggingSplit = false;
+        state.initialPinchDistance = null;
+      });
+
+      // Zoom Buttons
+      zoomInBtn.addEventListener('click', () => {
+        state.zoom = Math.min(state.zoom * 1.3, 24);
+        updateTransform();
+      });
+      zoomOutBtn.addEventListener('click', () => {
+        state.zoom = Math.max(state.zoom / 1.3, 0.25);
+        updateTransform();
+      });
+      zoomResetBtn.addEventListener('click', () => {
+        state.zoom = 1;
+        state.panX = 0;
+        state.panY = 0;
+        updateTransform();
+      });
+
+      // View modes
+      modeSplit.addEventListener('click', () => setViewMode('split'));
+      modeSideBySide.addEventListener('click', () => setViewMode('side-by-side'));
+      modeVectorOnly.addEventListener('click', () => setViewMode('vector-only'));
+
+      toggleWireframe.addEventListener('click', () => {
+        state.wireframe = !state.wireframe;
+        toggleWireframe.classList.toggle('border-sky-500', state.wireframe);
+        applyWireframeStyle(svgMountPoint.querySelector('svg'));
+      });
+
+      // File triggers
+      const openFileDialog = () => {
+        fileUploadInput.value = '';
+        fileUploadInput.click();
+      };
+      btnHeaderUpload.addEventListener('click', openFileDialog);
+      sidebarDropzone.addEventListener('click', openFileDialog);
+      btnBrowseComputer.addEventListener('click', openFileDialog);
+
+      fileUploadInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (ev) => loadNewImageSrc(ev.target.result, file.name);
+          reader.readAsDataURL(file);
+        }
+      });
+
+      // Clipboard Paste
+      window.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+        if (!items) return;
+        for (let item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              loadNewImageSrc(ev.target.result, `clipboard-${Date.now()}.png`);
+              showToast("Gambar disalin dari clipboard!");
+            };
+            reader.readAsDataURL(blob);
+            break;
+          }
+        }
+      });
+
+      // Drag and drop onto stage
+      stageContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        stageContainer.classList.add('ring-2', 'ring-sky-500');
+      });
+      stageContainer.addEventListener('dragleave', () => stageContainer.classList.remove('ring-2', 'ring-sky-500'));
+      stageContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        stageContainer.classList.remove('ring-2', 'ring-sky-500');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const file = e.dataTransfer.files[0];
+          const reader = new FileReader();
+          reader.onload = (ev) => loadNewImageSrc(ev.target.result, file.name);
+          reader.readAsDataURL(file);
+        }
+      });
+
+      // Sample triggers
+      const loadSampleAction = () => {
+        const demoUrl = generateDemoCanvas();
+        loadNewImageSrc(demoUrl, 'demo-phoenix-logo.png');
+      };
+      btnOpenSample.addEventListener('click', loadSampleAction);
+      btnLoadDemo.addEventListener('click', loadSampleAction);
+
+      // Downloads
+      btnDownloadSvg.addEventListener('click', () => downloadSvgFile());
+      btnDownloadSvgTab.addEventListener('click', () => downloadSvgFile());
+      btnDownloadPngHiRes.addEventListener('click', () => downloadSuperResPng(4));
+      btnCopySvgCode.addEventListener('click', () => copyTextDirect(state.svgOutputString));
+      btnCopyRawCode.addEventListener('click', () => copyTextDirect(state.svgOutputString));
+
+      // History
+      btnClearAllHistory.addEventListener('click', clearAllHistory);
+      searchHistoryInput.addEventListener('input', renderHistoryList);
+      mobileNavMenuBtn.addEventListener('click', toggleMobileMenu);
+
+      // Window resize adaptation
+      window.addEventListener('resize', () => {
+        if (state.imageLoaded && state.imageWidth) {
+          fitStageDimensions(state.imageWidth, state.imageHeight);
+        }
+      });
+    }
+
+    // App Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshIcons();
+      loadHistoryFromStorage();
+      setupEventListeners();
+
+      // Load initial logo
+      const demoUrl = generateDemoCanvas();
+      loadNewImageSrc(demoUrl, 'demo-phoenix-logo.png');
+    });
+  </script>
+</body>
+</html>
